@@ -6,19 +6,12 @@ use crate::error::TestError;
 
 #[derive(Debug)]
 pub struct Assertion<'a, const ErrorDescriptionLength: usize> {
-    test_name: &'a str,
     test_error: TestError<'a, ErrorDescriptionLength>,
 }
 
 impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLength> {
-    pub(crate) fn new(
-        test_name: &'a str,
-        test_error: TestError<'a, ErrorDescriptionLength>,
-    ) -> Self {
-        Assertion {
-            test_name,
-            test_error,
-        }
+    pub fn new(test_error: TestError<'a, ErrorDescriptionLength>) -> Self {
+        Assertion { test_error }
     }
     pub fn assert(
         mut self,
@@ -28,23 +21,20 @@ impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLeng
             AssertionSuccessful<'b, ErrorDescriptionLength>,
             TestError<'b, ErrorDescriptionLength>,
         >,
-    ) -> Result<Self, TestError<'a, ErrorDescriptionLength>> {
-        match (assertion)(AssertionResult {
-            test_name: &self.test_name,
-            test_error: self.test_error,
-        }) {
-            Ok(success) => {
-                self.test_error = success.take_error();
-                Ok(self)
-            }
-            Err(e) => Err(e),
-        }
+    ) -> Result<
+        AssertionSuccessful<'a, ErrorDescriptionLength>,
+        TestError<'a, ErrorDescriptionLength>,
+    > {
+        assertion(AssertionResult { assertion: self })
     }
     pub fn assert_eq<A: PartialEq<B> + core::fmt::Debug, B: core::fmt::Debug>(
         self,
         a: A,
         b: B,
-    ) -> Result<Self, TestError<'a, ErrorDescriptionLength>> {
+    ) -> Result<
+        AssertionSuccessful<'a, ErrorDescriptionLength>,
+        TestError<'a, ErrorDescriptionLength>,
+    > {
         self.assert(move |r| {
             if a == b {
                 Ok(r.success())
@@ -60,7 +50,10 @@ impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLeng
         self,
         a: A,
         b: B,
-    ) -> Result<Self, TestError<'a, ErrorDescriptionLength>> {
+    ) -> Result<
+        AssertionSuccessful<'a, ErrorDescriptionLength>,
+        TestError<'a, ErrorDescriptionLength>,
+    > {
         self.assert(move |r| {
             if a != b {
                 Ok(r.success())
@@ -74,20 +67,18 @@ impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLeng
 }
 
 pub struct AssertionResult<'a, const ErrorDescriptionLength: usize> {
-    test_name: &'a str,
-    test_error: TestError<'a, ErrorDescriptionLength>,
+    assertion: Assertion<'a, ErrorDescriptionLength>,
 }
 
 impl<'a, const ErrorDescriptionLength: usize> AssertionResult<'a, ErrorDescriptionLength> {
     pub fn success(self) -> AssertionSuccessful<'a, ErrorDescriptionLength> {
-        AssertionSuccessful(self.test_error)
+        AssertionSuccessful(self.assertion)
     }
     pub fn failure(mut self, description: Arguments) -> TestError<'a, ErrorDescriptionLength> {
-        self.test_error.set_test_name(self.test_name);
-        let previous_description = self.test_error.description_mut();
+        let previous_description = self.assertion.test_error.description_mut();
         // Ignore error when appending message too long for the allocated memory.
         let _ = TruncateWriter(previous_description).write_fmt(description);
-        self.test_error
+        self.assertion.test_error
     }
 }
 
@@ -99,12 +90,13 @@ impl<'a, const N: usize> Write for TruncateWriter<'a, N> {
     }
 }
 
+#[derive(Debug)]
 pub struct AssertionSuccessful<'a, const ErrorDescriptionLength: usize>(
-    TestError<'a, ErrorDescriptionLength>,
+    Assertion<'a, ErrorDescriptionLength>,
 );
 impl<'a, const ErrorDescriptionLength: usize> AssertionSuccessful<'a, ErrorDescriptionLength> {
-    pub(crate) fn take_error(self) -> TestError<'a, ErrorDescriptionLength> {
-        self.0
+    pub fn test_name(&self) -> &str {
+        self.0.test_error.test_name()
     }
 }
 
@@ -136,7 +128,7 @@ mod test {
         let assertion = assertion.assert_eq(1, 1);
         assert!(assertion.is_ok());
         let assertion = assertion.unwrap();
-        assert!(assertion.assert_ne(1, 1).is_err());
+        assert!(assertion.0.assert_ne(1, 1).is_err());
     }
     #[test]
     fn assert_ne() {
@@ -144,13 +136,13 @@ mod test {
         let assertion = assertion.assert_ne(1, 2);
         assert!(assertion.is_ok());
         let assertion = assertion.unwrap();
-        assert!(assertion.assert_eq(1, 2).is_err());
+        assert!(assertion.0.assert_eq(1, 2).is_err());
     }
     #[test]
     fn assert_test_name() {
         const TEST_NAME: &str = "TEST_NAME";
         let assertion = new_assertion::<256>(TEST_NAME);
-        assert_eq!(TEST_NAME, assertion.test_name);
+        assert_eq!(TEST_NAME, assertion.test_error.test_name());
     }
     #[test]
     fn assert_failure_test_name() {
@@ -166,6 +158,6 @@ mod test {
         test_name: &str,
     ) -> Assertion<'_, ErrorDescriptionLength> {
         let test_error = TestError::new(test_name, String::<ErrorDescriptionLength>::new());
-        Assertion::new(test_name, test_error)
+        Assertion::new(test_error)
     }
 }

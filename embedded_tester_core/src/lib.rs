@@ -13,98 +13,42 @@ use crate::{
 pub mod assertion;
 pub mod error;
 
-pub trait TestRunner {
-    fn execute(self);
+pub trait TestRunner<const ErrorDescriptionLength: usize> {
+    fn execute<'a>(self) -> impl Iterator<Item = TestResult<'a, ErrorDescriptionLength>> + 'a;
 }
-/*pub struct TestRunner<'a, const COUNT: usize> {
-    tests: [TestContext<'a>; COUNT],
-}*/
-#[macro_export]
-macro_rules! new_test_runner {
-    ($test_runner_name: ident, $(($test_name: literal, $test_fn: expr)),+) => {
-        pub struct $test_runner_name<'a> {
-            $($test_name: $test_fn)*
-        }
-        impl<'a> $test_runner_name<'a> {
-            pub fn add_test(&mut self, name: &'a str, test: impl Into<Test>) {
-                self.tests.push(TestContext {
-                    name,
-                    test: test.into(),
-                });
-            }
-            pub fn execute(self) {
-                if let Err(errors) = self.run() {
-                    panic!("{errors}");
-                } else {
-                }
-            }
-            fn run(self) -> Result<(), TestErrors<'a, COUNT>> {
-                let total_tests = self.tests.len();
-                let mut errors: Vec<_, COUNT> = self
-                    .tests
-                    .into_iter()
-                    .filter_map(|test| {
-                        if let Err(e) = test.run() {
-                            Some(e)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                if errors.is_empty() {
-                    Ok(())
-                } else {
-                    Err(TestErrors {
-                        total_tests,
-                        errors,
-                    })
-                }
-            }
-        }
-    };
-}
-pub struct TestContext<'a, const ErrorDescriptionLength: usize> {
-    name: &'a str,
-    test: Test<ErrorDescriptionLength>,
-}
-impl<'a, const ErrorDescriptionLength: usize> TestContext<'a, ErrorDescriptionLength> {
-    pub fn new(name: &'a str, test: Test<ErrorDescriptionLength>) -> Self {
-        TestContext { name, test }
-    }
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn run(
-        self,
-        test_error: TestError<'a, ErrorDescriptionLength>,
-    ) -> Result<(), TestError<'a, ErrorDescriptionLength>> {
-        self.test.run(Assertion::new(self.name, test_error))
-    }
-}
+
 pub type TestResult<'a, const ErrorDescriptionLength: usize> =
-    Result<(), TestError<'a, ErrorDescriptionLength>>;
-pub struct Test<const ErrorDescriptionLength: usize>(
-    for<'a> fn(Assertion<'a, ErrorDescriptionLength>) -> TestResult<'a, ErrorDescriptionLength>,
-);
-impl<const ErrorDescriptionLength: usize> Test<ErrorDescriptionLength> {
-    pub fn run<'a>(
-        self,
-        assertion: Assertion<'a, ErrorDescriptionLength>,
-    ) -> Result<(), TestError<'a, ErrorDescriptionLength>> {
-        (self.0)(assertion)
+    Result<AssertionSuccessful<'a, ErrorDescriptionLength>, TestError<'a, ErrorDescriptionLength>>;
+
+pub struct TestContext<'a, const ErrorDescriptionLength: usize, T: Test<ErrorDescriptionLength>> {
+    assertion: Assertion<'a, ErrorDescriptionLength>,
+    test: T,
+}
+impl<'a, const ErrorDescriptionLength: usize, T: Test<ErrorDescriptionLength>>
+    TestContext<'a, ErrorDescriptionLength, T>
+{
+    pub fn new(assertion: Assertion<'a, ErrorDescriptionLength>, test: T) -> Self {
+        TestContext { assertion, test }
+    }
+    pub fn run(self) -> TestResult<'a, ErrorDescriptionLength> {
+        self.test.run(self.assertion)
     }
 }
-impl<const ErrorDescriptionLength: usize>
-    From<
-        for<'a> fn(Assertion<'a, ErrorDescriptionLength>) -> TestResult<'a, ErrorDescriptionLength>,
-    > for Test<ErrorDescriptionLength>
+
+pub trait Test<const ErrorDescriptionLength: usize> {
+    fn run(
+        self,
+        assertion: Assertion<ErrorDescriptionLength>,
+    ) -> TestResult<'_, ErrorDescriptionLength>;
+}
+impl<const ErrorDescriptionLength: usize> Test<ErrorDescriptionLength>
+    for for<'a> fn(Assertion<'a, ErrorDescriptionLength>) -> TestResult<'a, ErrorDescriptionLength>
 {
-    fn from(
-        value: for<'a> fn(
-            Assertion<'a, ErrorDescriptionLength>,
-        ) -> TestResult<'a, ErrorDescriptionLength>,
-    ) -> Self {
-        Test(value)
+    fn run(
+        self,
+        assertion: Assertion<ErrorDescriptionLength>,
+    ) -> TestResult<'_, ErrorDescriptionLength> {
+        self(assertion)
     }
 }
 

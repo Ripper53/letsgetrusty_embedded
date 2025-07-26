@@ -1,19 +1,19 @@
 extern crate proc_macro;
 use darling::FromDeriveInput;
 use proc_macro::TokenStream;
-use syn::{Data, DeriveInput, LitInt, LitStr, parse_macro_input, spanned::Spanned};
+use syn::{Data, DeriveInput, Lifetime, LitInt, LitStr, parse_macro_input, spanned::Spanned};
 
 #[derive(darling::FromDeriveInput, Debug)]
-#[darling(attributes(test_runner))]
+#[darling(attributes(test_runner_config))]
 struct MetaData {
     error_message_size: LitInt,
 }
 
-#[proc_macro_derive(TestRunner, attributes(test_runner))]
+#[proc_macro_derive(TestRunner, attributes(test_runner_config))]
 pub fn test_runner(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let meta_data = MetaData::from_derive_input(&input)
-        .expect("Expected `#[test_runner(error_message_size = ...)]` attribute");
+        .expect("Expected `#[test_runner_config(error_message_size = ...)]` attribute");
     let error_message_size = meta_data.error_message_size;
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -26,8 +26,7 @@ pub fn test_runner(input: TokenStream) -> TokenStream {
                 let f = f.ident.as_ref().expect("Expected field to be named");
                 (
                     LitInt::new(&index.to_string(), input.span()),
-                    LitStr::new(&f.to_string(), input.span()),
-                    f,
+                    (LitStr::new(&f.to_string(), input.span()), f),
                 )
             })
             .collect::<Vec<_>>()
@@ -38,54 +37,31 @@ pub fn test_runner(input: TokenStream) -> TokenStream {
     };
     let tests_count = LitInt::new(&test_fields.len().to_string(), input.span());
     quote::quote! {
-        impl #impl_generics ::embedded_tester::TestRunner for #name #ty_generics #where_clause {
-            fn execute(self) {
-                struct Iter<'a, const ERROR_DESCRIPTION_SIZE: usize> {
+        impl #impl_generics ::embedded_tester::TestRunner<#error_message_size> for #name #ty_generics #where_clause {
+            fn execute<'zzzz>(self) -> impl ::core::iter::Iterator<Item = ::embedded_tester::TestResult<'zzzz, #error_message_size>> + 'zzzz {
+                struct InnerIter #impl_generics {
                     index: usize,
+                    test_runner: #name #ty_generics,
                 }
-                impl<'a, const ERROR_DESCRIPTION_SIZE: usize> ::core::iter::Iterator
-                    for Iter<'a, ERROR_DESCRIPTION_SIZE>
+                impl #impl_generics ::core::iter::Iterator
+                    for InnerIter #ty_generics
                 {
-                    type Item = fn(
-                        ::embedded_tester::Assertion<'a, ERROR_DESCRIPTION_SIZE>,
-                    ) -> TestResult<'a, ERROR_DESCRIPTION_SIZE>;
+                    type Item = (&'static str, for<'a> fn(::embedded_tester::assertion::Assertion<'a, #error_message_size>) -> ::embedded_tester::TestResult<'a, #error_message_size>);
                     fn next(&mut self) -> ::core::option::Option<Self::Item> {
                         let r = match self.index {
-                            #(#test_indexes => self.#test_fields)*
+                            #(#test_indexes => Some((#test_names, self.test_runner.#test_fields)),)*
                             _ => None,
                         };
                         self.index += 1;
                         r
                     }
                 }
-                let mut test_error = ::embedded_tester::error::TestError::new("", ::embedded_tester::heapless::String::<#error_message_size>::new());
-                #(
-                    ::embedded_tester::TestContext::new(test_names, self.#test_fields.into()).run(test_error);
-                )*
-            }
-        }
-        impl #impl_generics #name #ty_generics #where_clause {
-            fn run(self, test_error: ::embedded_tester::error::TestError) -> ::embedded_tester::TestResults<'a, #tests_count>> {
-                let total_tests = self.tests.len();
-                let mut errors: Vec<_, #tests_count> = self
-                    .tests
-                    .into_iter()
-                    .filter_map(|test| {
-                        if let Err(e) = test.run() {
-                            Some(e)
-                        } else {
-                            None
-                        }
+                InnerIter { index: 0, test_runner: self }.into_iter()
+                    .map(|(test_name, f)| {
+                        let test_error = ::embedded_tester::error::TestError::<'zzzz, #error_message_size>::new(test_name, ::embedded_tester::heapless::String::<#error_message_size>::new());
+                        let assertion = ::embedded_tester::assertion::Assertion::<'zzzz, #error_message_size>::new(test_error);
+                        ::embedded_tester::TestContext::<'zzzz, #error_message_size, _>::new(assertion, f).run()
                     })
-                    .collect();
-                if errors.is_empty() {
-                    Ok(())
-                } else {
-                    Err(TestErrors {
-                        total_tests,
-                        errors,
-                    })
-                }
             }
         }
     }
