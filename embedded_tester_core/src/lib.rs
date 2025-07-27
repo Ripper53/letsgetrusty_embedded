@@ -14,11 +14,10 @@ pub mod assertion;
 pub mod error;
 
 pub trait TestRunner {
-    type Error: core::error::Error;
-    fn execute<'a>(self) -> impl Iterator<Item = TestResult<'a, Self::Error>> + 'a;
+    fn execute(self) -> impl Iterator<Item = TestResult<'static, impl core::error::Error>>;
 }
 
-pub type TestResult<'a, E: core::error::Error> = Result<AssertionSuccessful<'a>, E>;
+pub type TestResult<'a, E: core::error::Error> = Result<AssertionSuccessful<'a>, TestError<'a, E>>;
 
 pub struct TestContext<'a, T: Test> {
     assertion: Assertion<'a>,
@@ -42,7 +41,7 @@ impl<E: core::error::Error> Test for for<'a> fn(Assertion<'a>) -> Result<(), E> 
     fn run(self, assertion: Assertion) -> TestResult<'_, Self::Error> {
         let test_name = assertion.test_name();
         if let Err(e) = self(assertion) {
-            Err(e)
+            Err(TestError::new(test_name, e))
         } else {
             Ok(AssertionSuccessful::new(test_name))
         }

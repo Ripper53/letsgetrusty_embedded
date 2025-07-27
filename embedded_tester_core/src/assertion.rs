@@ -16,65 +16,62 @@ impl<'a> Assertion<'a> {
     pub fn test_name(&self) -> &'a str {
         self.test_name
     }
+    #[must_use]
     pub fn assert<E: core::error::Error + 'a>(
         &'a self,
-        assertion: impl FnOnce(AssertionResult<'a>) -> Result<(), E>,
+        assertion: impl FnOnce() -> Result<(), E>,
     ) -> Result<(), E> {
-        match assertion(AssertionResult { assertion: self }) {
+        match assertion() {
             Ok(_) => Ok(()),
             Err(assertion_failure) => Err(assertion_failure),
         }
     }
+    #[must_use]
     pub fn assert_eq<
         const ErrorDescriptionLength: usize,
-        A: PartialEq<B> + core::fmt::Debug,
-        B: core::fmt::Debug,
+        A: PartialEq<B> + core::fmt::Display,
+        B: core::fmt::Display,
     >(
         &self,
         a: A,
         b: B,
     ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
-        self.assert(move |r| {
+        self.assert(move || {
             if a == b {
                 Ok(())
             } else {
-                Err(r.failure(format_args!(
-                    "expected left side to equal right side, but: {a:?} != {b:?}",
+                Err(AssertionResult::failure(format_args!(
+                    "expected left side to equal right side, but: {a} != {b}",
                 )))
             }
         })
     }
+    #[must_use]
     pub fn assert_ne<
         const ErrorDescriptionLength: usize,
-        A: PartialEq<B> + core::fmt::Debug,
-        B: core::fmt::Debug,
+        A: PartialEq<B> + core::fmt::Display,
+        B: core::fmt::Display,
     >(
         &self,
         a: A,
         b: B,
     ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
-        self.assert(move |r| {
+        self.assert(move || {
             if a != b {
                 Ok(())
             } else {
-                Err(r.failure(format_args!(
-                    "expected left side to not equal right side, but: {a:?} == {b:?}",
+                Err(AssertionResult::failure(format_args!(
+                    "expected left side to not equal right side, but: {a} == {b}",
                 )))
             }
         })
     }
 }
 
-pub struct AssertionResult<'a> {
-    assertion: &'a Assertion<'a>,
-}
+pub struct AssertionResult;
 
-impl<'a> AssertionResult<'a> {
-    pub fn success(self) -> AssertionSuccessful<'a> {
-        AssertionSuccessful::new(self.assertion.test_name)
-    }
+impl AssertionResult {
     pub fn failure<const ErrorDescriptionLength: usize>(
-        mut self,
         description: Arguments,
     ) -> AssertionFailure<ErrorDescriptionLength> {
         let mut description_str = String::<ErrorDescriptionLength>::new();
@@ -134,60 +131,55 @@ impl<'a, const N: usize> Write for TruncateWriter<'a, N> {
 mod test {
     use heapless::String;
 
-    use crate::{assertion::Assertion, error::TestError};
+    use crate::{
+        assertion::{Assertion, AssertionResult},
+        error::TestError,
+    };
 
     #[test]
     fn assert_success() {
-        let assertion = new_assertion::<256>("TEST_NAME");
-        assert!(assertion.assert(|a| Ok(a.success())).is_ok());
+        #[derive(Debug)]
+        struct TestError;
+        impl core::fmt::Display for TestError {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                unimplemented!()
+            }
+        }
+        impl core::error::Error for TestError {}
+        let assertion = Assertion::new("TEST_NAME");
+        assert!(assertion.assert::<TestError>(|| Ok(())).is_ok());
     }
     #[test]
     fn assert_failure() {
         const ERROR_MESSAGE: &str = "TEST_FAILURE_DESCRIPTION";
         const ERROR_MESSAGE_LEN: usize = ERROR_MESSAGE.len();
-        let assertion = new_assertion::<ERROR_MESSAGE_LEN>("TEST_NAME");
-        let assertion = assertion.assert(|a| Err(a.failure(format_args!("{ERROR_MESSAGE}"))));
+        let assertion = Assertion::new("TEST_NAME");
+        let assertion = assertion.assert(|| {
+            Err(AssertionResult::failure::<ERROR_MESSAGE_LEN>(format_args!(
+                "{ERROR_MESSAGE}"
+            )))
+        });
         assert!(assertion.is_err());
         let error = assertion.unwrap_err();
-        assert_eq!(ERROR_MESSAGE_LEN, error.description().len());
-        assert_eq!(ERROR_MESSAGE, error.description());
+        assert_eq!(ERROR_MESSAGE_LEN, error.error_description().len());
+        assert_eq!(ERROR_MESSAGE, error.error_description());
     }
     #[test]
     fn assert_eq() {
-        let assertion = new_assertion::<256>("TEST_NAME");
-        let assertion = assertion.assert_eq(1, 1);
-        assert!(assertion.is_ok());
-        let assertion = assertion.unwrap();
-        assert!(assertion.0.assert_ne(1, 1).is_err());
+        let assertion = Assertion::new("TEST_NAME");
+        assert!(assertion.assert_eq::<0, _, _>(1, 1).is_ok());
+        assert!(assertion.assert_ne::<0, _, _>(1, 1).is_err());
     }
     #[test]
     fn assert_ne() {
-        let assertion = new_assertion::<256>("TEST_NAME");
-        let assertion = assertion.assert_ne(1, 2);
-        assert!(assertion.is_ok());
-        let assertion = assertion.unwrap();
-        assert!(assertion.0.assert_eq(1, 2).is_err());
+        let assertion = Assertion::new("TEST_NAME");
+        assert!(assertion.assert_ne::<0, _, _>(1, 2).is_ok());
+        assert!(assertion.assert_eq::<0, _, _>(1, 2).is_err());
     }
     #[test]
     fn assert_test_name() {
         const TEST_NAME: &str = "TEST_NAME";
-        let assertion = new_assertion::<256>(TEST_NAME);
-        assert_eq!(TEST_NAME, assertion.test_error.test_name());
-    }
-    #[test]
-    fn assert_failure_test_name() {
-        const TEST_NAME: &str = "TEST_NAME";
-        let assertion = new_assertion::<256>(TEST_NAME);
-        let result = assertion.assert_eq(1, 2);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(TEST_NAME, error.test_name());
-    }
-
-    fn new_assertion<const ErrorDescriptionLength: usize>(
-        test_name: &str,
-    ) -> Assertion<'_, ErrorDescriptionLength> {
-        let test_error = TestError::new(test_name, String::<ErrorDescriptionLength>::new());
-        Assertion::new(test_error)
+        let assertion = Assertion::new(TEST_NAME);
+        assert_eq!(TEST_NAME, assertion.test_name());
     }
 }

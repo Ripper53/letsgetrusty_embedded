@@ -29,18 +29,39 @@ fn main() -> ! {
 
 const ERROR_DESCRIPTION_SIZE: usize = 256;
 #[derive(TestRunner)]
-#[test_runner_config(error_message_size = 256)]
 struct Tests {
     a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
+    b: fn(Assertion) -> Result<(), CustomError>,
+    c: fn(Assertion) -> Result<(), CustomError>,
 }
 
 impl Default for Tests {
     fn default() -> Self {
-        Tests { a: test_a }
+        Tests {
+            a: test_a,
+            b: test_b,
+            c: test_b,
+        }
     }
 }
 
 fn test_a(a: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
-    a.assert_eq(1, 2)?;
+    a.assert_eq(1, 1)?;
     Ok(())
+}
+
+#[derive(Debug)]
+enum CustomError {
+    Error1,
+}
+impl core::fmt::Display for CustomError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CustomError::Error1 => write!(f, "FIRST_ERROR"),
+        }
+    }
+}
+impl core::error::Error for CustomError {}
+fn test_b(_a: Assertion) -> Result<(), CustomError> {
+    Err(CustomError::Error1)
 }
