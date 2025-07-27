@@ -13,42 +13,39 @@ use crate::{
 pub mod assertion;
 pub mod error;
 
-pub trait TestRunner<const ErrorDescriptionLength: usize> {
-    fn execute<'a>(self) -> impl Iterator<Item = TestResult<'a, ErrorDescriptionLength>> + 'a;
+pub trait TestRunner {
+    type Error: core::error::Error;
+    fn execute<'a>(self) -> impl Iterator<Item = TestResult<'a, Self::Error>> + 'a;
 }
 
-pub type TestResult<'a, const ErrorDescriptionLength: usize> =
-    Result<AssertionSuccessful<'a, ErrorDescriptionLength>, TestError<'a, ErrorDescriptionLength>>;
+pub type TestResult<'a, E: core::error::Error> = Result<AssertionSuccessful<'a>, E>;
 
-pub struct TestContext<'a, const ErrorDescriptionLength: usize, T: Test<ErrorDescriptionLength>> {
-    assertion: Assertion<'a, ErrorDescriptionLength>,
+pub struct TestContext<'a, T: Test> {
+    assertion: Assertion<'a>,
     test: T,
 }
-impl<'a, const ErrorDescriptionLength: usize, T: Test<ErrorDescriptionLength>>
-    TestContext<'a, ErrorDescriptionLength, T>
-{
-    pub fn new(assertion: Assertion<'a, ErrorDescriptionLength>, test: T) -> Self {
+impl<'a, T: Test> TestContext<'a, T> {
+    pub fn new(assertion: Assertion<'a>, test: T) -> Self {
         TestContext { assertion, test }
     }
-    pub fn run(self) -> TestResult<'a, ErrorDescriptionLength> {
+    pub fn run(self) -> TestResult<'a, T::Error> {
         self.test.run(self.assertion)
     }
 }
 
-pub trait Test<const ErrorDescriptionLength: usize> {
-    fn run(
-        self,
-        assertion: Assertion<ErrorDescriptionLength>,
-    ) -> TestResult<'_, ErrorDescriptionLength>;
+pub trait Test {
+    type Error: core::error::Error;
+    fn run(self, assertion: Assertion) -> TestResult<'_, Self::Error>;
 }
-impl<const ErrorDescriptionLength: usize> Test<ErrorDescriptionLength>
-    for for<'a> fn(Assertion<'a, ErrorDescriptionLength>) -> TestResult<'a, ErrorDescriptionLength>
-{
-    fn run(
-        self,
-        assertion: Assertion<ErrorDescriptionLength>,
-    ) -> TestResult<'_, ErrorDescriptionLength> {
-        self(assertion)
+impl<E: core::error::Error> Test for for<'a> fn(Assertion<'a>) -> Result<(), E> {
+    type Error = E;
+    fn run(self, assertion: Assertion) -> TestResult<'_, Self::Error> {
+        let test_name = assertion.test_name();
+        if let Err(e) = self(assertion) {
+            Err(e)
+        } else {
+            Ok(AssertionSuccessful::new(test_name))
+        }
     }
 }
 

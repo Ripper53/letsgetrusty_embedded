@@ -18,19 +18,13 @@ impl<'a, const DescriptionLength: usize> TestError<'a, DescriptionLength> {
     pub fn description(&self) -> &str {
         self.description.as_str()
     }
-    pub fn set_test_name(&mut self, test_name: &'a str) {
-        self.test_name = test_name;
-    }
-    pub fn description_mut(&mut self) -> &mut String<DescriptionLength> {
-        &mut self.description
-    }
 }
 
 impl<'a, const ErrorDescriptionLength: usize> core::fmt::Display
     for TestError<'a, ErrorDescriptionLength>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.description)
+        write!(f, "failed test {}: {}", self.test_name, self.description)
     }
 }
 impl<'a, const ErrorDescriptionLength: usize> core::error::Error

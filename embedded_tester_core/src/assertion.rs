@@ -5,58 +5,57 @@ use heapless::String;
 use crate::error::TestError;
 
 #[derive(Debug)]
-pub struct Assertion<'a, const ErrorDescriptionLength: usize> {
-    test_error: TestError<'a, ErrorDescriptionLength>,
+pub struct Assertion<'a> {
+    test_name: &'a str,
 }
 
-impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLength> {
-    pub fn new(test_error: TestError<'a, ErrorDescriptionLength>) -> Self {
-        Assertion { test_error }
+impl<'a> Assertion<'a> {
+    pub fn new(test_name: &'a str) -> Self {
+        Assertion { test_name }
     }
-    pub fn assert(
-        mut self,
-        assertion: impl for<'b> FnOnce(
-            AssertionResult<'b, ErrorDescriptionLength>,
-        ) -> Result<
-            AssertionSuccessful<'b, ErrorDescriptionLength>,
-            TestError<'b, ErrorDescriptionLength>,
-        >,
-    ) -> Result<
-        AssertionSuccessful<'a, ErrorDescriptionLength>,
-        TestError<'a, ErrorDescriptionLength>,
-    > {
-        assertion(AssertionResult { assertion: self })
+    pub fn test_name(&self) -> &'a str {
+        self.test_name
     }
-    pub fn assert_eq<A: PartialEq<B> + core::fmt::Debug, B: core::fmt::Debug>(
-        self,
+    pub fn assert<E: core::error::Error + 'a>(
+        &'a self,
+        assertion: impl FnOnce(AssertionResult<'a>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        match assertion(AssertionResult { assertion: self }) {
+            Ok(_) => Ok(()),
+            Err(assertion_failure) => Err(assertion_failure),
+        }
+    }
+    pub fn assert_eq<
+        const ErrorDescriptionLength: usize,
+        A: PartialEq<B> + core::fmt::Debug,
+        B: core::fmt::Debug,
+    >(
+        &self,
         a: A,
         b: B,
-    ) -> Result<
-        AssertionSuccessful<'a, ErrorDescriptionLength>,
-        TestError<'a, ErrorDescriptionLength>,
-    > {
+    ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
         self.assert(move |r| {
             if a == b {
-                Ok(r.success())
+                Ok(())
             } else {
-                let mut message = String::<ErrorDescriptionLength>::new();
                 Err(r.failure(format_args!(
                     "expected left side to equal right side, but: {a:?} != {b:?}",
                 )))
             }
         })
     }
-    pub fn assert_ne<A: PartialEq<B> + core::fmt::Debug, B: core::fmt::Debug>(
-        self,
+    pub fn assert_ne<
+        const ErrorDescriptionLength: usize,
+        A: PartialEq<B> + core::fmt::Debug,
+        B: core::fmt::Debug,
+    >(
+        &self,
         a: A,
         b: B,
-    ) -> Result<
-        AssertionSuccessful<'a, ErrorDescriptionLength>,
-        TestError<'a, ErrorDescriptionLength>,
-    > {
+    ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
         self.assert(move |r| {
             if a != b {
-                Ok(r.success())
+                Ok(())
             } else {
                 Err(r.failure(format_args!(
                     "expected left side to not equal right side, but: {a:?} == {b:?}",
@@ -66,19 +65,60 @@ impl<'a, const ErrorDescriptionLength: usize> Assertion<'a, ErrorDescriptionLeng
     }
 }
 
-pub struct AssertionResult<'a, const ErrorDescriptionLength: usize> {
-    assertion: Assertion<'a, ErrorDescriptionLength>,
+pub struct AssertionResult<'a> {
+    assertion: &'a Assertion<'a>,
 }
 
-impl<'a, const ErrorDescriptionLength: usize> AssertionResult<'a, ErrorDescriptionLength> {
-    pub fn success(self) -> AssertionSuccessful<'a, ErrorDescriptionLength> {
-        AssertionSuccessful(self.assertion)
+impl<'a> AssertionResult<'a> {
+    pub fn success(self) -> AssertionSuccessful<'a> {
+        AssertionSuccessful::new(self.assertion.test_name)
     }
-    pub fn failure(mut self, description: Arguments) -> TestError<'a, ErrorDescriptionLength> {
-        let previous_description = self.assertion.test_error.description_mut();
+    pub fn failure<const ErrorDescriptionLength: usize>(
+        mut self,
+        description: Arguments,
+    ) -> AssertionFailure<ErrorDescriptionLength> {
+        let mut description_str = String::<ErrorDescriptionLength>::new();
         // Ignore error when appending message too long for the allocated memory.
-        let _ = TruncateWriter(previous_description).write_fmt(description);
-        self.assertion.test_error
+        let _ = TruncateWriter(&mut description_str).write_fmt(description);
+        AssertionFailure {
+            description: description_str,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AssertionSuccessful<'a> {
+    test_name: &'a str,
+}
+impl<'a> AssertionSuccessful<'a> {
+    pub(crate) fn new(test_name: &'a str) -> Self {
+        AssertionSuccessful { test_name }
+    }
+    pub fn test_name(&self) -> &str {
+        self.test_name
+    }
+}
+#[derive(Debug)]
+pub struct AssertionFailure<const ErrorDescriptionLength: usize> {
+    description: String<ErrorDescriptionLength>,
+}
+impl<const ErrorDescriptionLength: usize> core::fmt::Display
+    for AssertionFailure<ErrorDescriptionLength>
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.description)
+    }
+}
+impl<const ErrorDescriptionLength: usize> core::error::Error
+    for AssertionFailure<ErrorDescriptionLength>
+{
+}
+impl<const ErrorDescriptionLength: usize> AssertionFailure<ErrorDescriptionLength> {
+    pub fn error_description(&self) -> &str {
+        self.description.as_str()
+    }
+    pub fn take_error_description(self) -> String<ErrorDescriptionLength> {
+        self.description
     }
 }
 
@@ -87,16 +127,6 @@ impl<'a, const N: usize> Write for TruncateWriter<'a, N> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let truncated = if s.len() > N { &s[..N] } else { s };
         self.0.push_str(truncated).map_err(|()| core::fmt::Error)
-    }
-}
-
-#[derive(Debug)]
-pub struct AssertionSuccessful<'a, const ErrorDescriptionLength: usize>(
-    Assertion<'a, ErrorDescriptionLength>,
-);
-impl<'a, const ErrorDescriptionLength: usize> AssertionSuccessful<'a, ErrorDescriptionLength> {
-    pub fn test_name(&self) -> &str {
-        self.0.test_error.test_name()
     }
 }
 

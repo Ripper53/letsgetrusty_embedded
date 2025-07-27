@@ -4,9 +4,8 @@
 use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
 use embedded_tester::{
-    Test, TestResult, TestRunner,
-    assertion::{Assertion, AssertionSuccessful},
-    error::TestError,
+    TestRunner,
+    assertion::{Assertion, AssertionFailure},
 };
 use panic_halt as _;
 
@@ -32,7 +31,7 @@ const ERROR_DESCRIPTION_SIZE: usize = 256;
 #[derive(TestRunner)]
 #[test_runner_config(error_message_size = 256)]
 struct Tests {
-    a: for<'a> fn(Assertion<'a, ERROR_DESCRIPTION_SIZE>) -> TestResult<'a, ERROR_DESCRIPTION_SIZE>,
+    a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
 }
 
 impl Default for Tests {
@@ -41,6 +40,7 @@ impl Default for Tests {
     }
 }
 
-fn test_a(a: Assertion<'_, ERROR_DESCRIPTION_SIZE>) -> TestResult<'_, ERROR_DESCRIPTION_SIZE> {
-    a.assert_eq(1, 1)
+fn test_a(a: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
+    a.assert_eq(1, 2)?;
+    Ok(())
 }
