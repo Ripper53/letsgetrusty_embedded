@@ -26,7 +26,7 @@ impl<'a, E: core::error::Error> TestError<'a, E> {
 
 impl<'a, E: core::error::Error> core::fmt::Display for TestError<'a, E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "failed test {}: {}", self.test_name, self.error)
+        write!(f, "failed {}: {}", self.test_name, self.error)
     }
 }
 impl<'a, E: core::error::Error> core::error::Error for TestError<'a, E> {}

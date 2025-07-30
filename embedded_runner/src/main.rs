@@ -27,7 +27,7 @@ fn main() -> ! {
     loop {}
 }
 
-const ERROR_DESCRIPTION_SIZE: usize = 256;
+const ERROR_DESCRIPTION_SIZE: usize = 32;
 #[derive(TestRunner)]
 struct Tests {
     a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
@@ -46,7 +46,7 @@ impl Default for Tests {
 }
 
 fn test_a(a: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
-    a.assert_eq(1, 1)?;
+    a.assert_eq(1, 2)?;
     Ok(())
 }
 

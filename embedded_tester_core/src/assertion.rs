@@ -41,7 +41,7 @@ impl<'a> Assertion<'a> {
                 Ok(())
             } else {
                 Err(AssertionResult::failure(format_args!(
-                    "expected left side to equal right side, but: {a} != {b}",
+                    "expected {a} == {b}",
                 )))
             }
         })
@@ -61,7 +61,7 @@ impl<'a> Assertion<'a> {
                 Ok(())
             } else {
                 Err(AssertionResult::failure(format_args!(
-                    "expected left side to not equal right side, but: {a} == {b}",
+                    "expected {a} != {b}",
                 )))
             }
         })
