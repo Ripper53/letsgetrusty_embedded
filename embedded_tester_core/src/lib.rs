@@ -17,7 +17,7 @@ pub trait TestRunner {
     fn execute(self) -> impl Iterator<Item = TestResult<'static, impl core::error::Error>>;
 }
 
-pub type TestResult<'a, E: core::error::Error> = Result<AssertionSuccessful<'a>, TestError<'a, E>>;
+pub type TestResult<'a, E> = Result<AssertionSuccessful<'a>, TestError<'a, E>>;
 
 pub struct TestContext<'a, T: Test> {
     assertion: Assertion<'a>,

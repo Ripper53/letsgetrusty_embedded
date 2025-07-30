@@ -2,8 +2,6 @@ use core::fmt::{Arguments, Write};
 
 use heapless::String;
 
-use crate::error::TestError;
-
 #[derive(Debug)]
 pub struct Assertion<'a> {
     test_name: &'a str,
@@ -28,58 +26,39 @@ impl<'a> Assertion<'a> {
     }
     #[must_use]
     pub fn assert_eq<
-        const ErrorDescriptionLength: usize,
+        const ERROR_DESCRIPTION_LENGTH: usize,
         A: PartialEq<B> + core::fmt::Display,
         B: core::fmt::Display,
     >(
         &self,
         a: A,
         b: B,
-    ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
+    ) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_LENGTH>> {
         self.assert(move || {
             if a == b {
                 Ok(())
             } else {
-                Err(AssertionResult::failure(format_args!(
-                    "expected {a} == {b}",
-                )))
+                Err(AssertionFailure::new(format_args!("expected {a} == {b}",)))
             }
         })
     }
     #[must_use]
     pub fn assert_ne<
-        const ErrorDescriptionLength: usize,
+        const ERROR_DESCRIPTION_LENGTH: usize,
         A: PartialEq<B> + core::fmt::Display,
         B: core::fmt::Display,
     >(
         &self,
         a: A,
         b: B,
-    ) -> Result<(), AssertionFailure<ErrorDescriptionLength>> {
+    ) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_LENGTH>> {
         self.assert(move || {
             if a != b {
                 Ok(())
             } else {
-                Err(AssertionResult::failure(format_args!(
-                    "expected {a} != {b}",
-                )))
+                Err(AssertionFailure::new(format_args!("expected {a} != {b}",)))
             }
         })
-    }
-}
-
-pub struct AssertionResult;
-
-impl AssertionResult {
-    pub fn failure<const ErrorDescriptionLength: usize>(
-        description: Arguments,
-    ) -> AssertionFailure<ErrorDescriptionLength> {
-        let mut description_str = String::<ErrorDescriptionLength>::new();
-        // Ignore error when appending message too long for the allocated memory.
-        let _ = TruncateWriter(&mut description_str).write_fmt(description);
-        AssertionFailure {
-            description: description_str,
-        }
     }
 }
 
@@ -96,25 +75,33 @@ impl<'a> AssertionSuccessful<'a> {
     }
 }
 #[derive(Debug)]
-pub struct AssertionFailure<const ErrorDescriptionLength: usize> {
-    description: String<ErrorDescriptionLength>,
+pub struct AssertionFailure<const ERROR_DESCRIPTION_LENGTH: usize> {
+    description: String<ERROR_DESCRIPTION_LENGTH>,
 }
-impl<const ErrorDescriptionLength: usize> core::fmt::Display
-    for AssertionFailure<ErrorDescriptionLength>
+impl<const ERROR_DESCRIPTION_LENGTH: usize> core::fmt::Display
+    for AssertionFailure<ERROR_DESCRIPTION_LENGTH>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.description)
     }
 }
-impl<const ErrorDescriptionLength: usize> core::error::Error
-    for AssertionFailure<ErrorDescriptionLength>
+impl<const ERROR_DESCRIPTION_LENGTH: usize> core::error::Error
+    for AssertionFailure<ERROR_DESCRIPTION_LENGTH>
 {
 }
-impl<const ErrorDescriptionLength: usize> AssertionFailure<ErrorDescriptionLength> {
+impl<const ERROR_DESCRIPTION_LENGTH: usize> AssertionFailure<ERROR_DESCRIPTION_LENGTH> {
+    pub fn new(description: Arguments) -> AssertionFailure<ERROR_DESCRIPTION_LENGTH> {
+        let mut description_str = String::<ERROR_DESCRIPTION_LENGTH>::new();
+        // Ignore error when appending message too long for the allocated memory.
+        let _ = TruncateWriter(&mut description_str).write_fmt(description);
+        AssertionFailure {
+            description: description_str,
+        }
+    }
     pub fn error_description(&self) -> &str {
         self.description.as_str()
     }
-    pub fn take_error_description(self) -> String<ErrorDescriptionLength> {
+    pub fn take_error_description(self) -> String<ERROR_DESCRIPTION_LENGTH> {
         self.description
     }
 }
@@ -129,19 +116,14 @@ impl<'a, const N: usize> Write for TruncateWriter<'a, N> {
 
 #[cfg(test)]
 mod test {
-    use heapless::String;
-
-    use crate::{
-        assertion::{Assertion, AssertionResult},
-        error::TestError,
-    };
+    use crate::assertion::{Assertion, AssertionFailure};
 
     #[test]
     fn assert_success() {
         #[derive(Debug)]
         struct TestError;
         impl core::fmt::Display for TestError {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 unimplemented!()
             }
         }
@@ -155,7 +137,7 @@ mod test {
         const ERROR_MESSAGE_LEN: usize = ERROR_MESSAGE.len();
         let assertion = Assertion::new("TEST_NAME");
         let assertion = assertion.assert(|| {
-            Err(AssertionResult::failure::<ERROR_MESSAGE_LEN>(format_args!(
+            Err(AssertionFailure::<ERROR_MESSAGE_LEN>::new(format_args!(
                 "{ERROR_MESSAGE}"
             )))
         });

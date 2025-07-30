@@ -7,7 +7,6 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-darling = "0.21.0"
 embedded_tester_core = { path = "../embedded_tester_core" }
 heck = "0.5.0"
 quote = "1.0.40"

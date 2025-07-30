@@ -1,10 +1,9 @@
 extern crate proc_macro;
-use darling::FromDeriveInput;
-use proc_macro::TokenStream;
 use heck::ToUpperCamelCase;
+use proc_macro::TokenStream;
 use syn::{
-    Data, DeriveInput, Field, GenericArgument, Ident, Lifetime, LitInt, LitStr, Path,
-    PathArguments, ReturnType, Type, TypePath, parse_macro_input, spanned::Spanned,
+    Data, DeriveInput, Field, GenericArgument, Ident, LitInt, LitStr, PathArguments, ReturnType,
+    Type, TypePath, parse_macro_input, spanned::Spanned,
 };
 
 #[proc_macro_derive(TestRunner)]

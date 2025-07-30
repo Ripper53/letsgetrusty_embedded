@@ -14,7 +14,7 @@ impl<'a, E: core::error::Error> TestError<'a, E> {
         &self.error
     }
     pub fn map_error<NewError: core::error::Error>(
-        mut self,
+        self,
         f: impl FnOnce(E) -> NewError,
     ) -> TestError<'a, NewError> {
         TestError {
