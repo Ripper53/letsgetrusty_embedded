@@ -4,7 +4,7 @@
 use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
 use embedded_tester::{
-    TestRunner,
+    TestRunner, TestScheduler,
     assertion::{Assertion, AssertionFailure},
 };
 use panic_halt as _;
@@ -12,7 +12,7 @@ use panic_halt as _;
 #[entry]
 fn main() -> ! {
     hprintln!("BEGAN");
-    for result in Tests::default().execute() {
+    for result in TestSchedulerB::default().execute() {
         match result {
             Ok(assertion_success) => {
                 hprintln!("SUCCESS: {}", assertion_success.test_name());
@@ -27,17 +27,39 @@ fn main() -> ! {
     loop {}
 }
 
+#[derive(TestScheduler)]
+struct TestSchedulerA {
+    tests_a: TestsA,
+    tests_b: TestsB,
+}
+
+#[derive(TestScheduler)]
+struct TestSchedulerB {
+    test_s: TestSchedulerA,
+    tests_c: TestsC,
+}
+
 const ERROR_DESCRIPTION_SIZE: usize = 32;
 #[derive(TestRunner)]
-struct Tests {
+struct TestsA {
     a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
     b: fn(Assertion) -> Result<(), CustomError>,
     c: fn(Assertion) -> Result<(), CustomError>,
 }
 
-impl Default for Tests {
+#[derive(TestRunner)]
+struct TestsB {
+    a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
+}
+
+#[derive(TestRunner)]
+struct TestsC {
+    a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
+}
+
+impl Default for TestsA {
     fn default() -> Self {
-        Tests {
+        TestsA {
             a: test_a,
             b: test_b,
             c: test_b,
@@ -45,8 +67,20 @@ impl Default for Tests {
     }
 }
 
+impl Default for TestsB {
+    fn default() -> Self {
+        TestsB { a: test_a }
+    }
+}
+
+impl Default for TestsC {
+    fn default() -> Self {
+        TestsC { a: test_a }
+    }
+}
+
 fn test_a(a: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
-    a.assert_eq(1, 2)?;
+    a.assert_eq(1, 1)?;
     Ok(())
 }
 

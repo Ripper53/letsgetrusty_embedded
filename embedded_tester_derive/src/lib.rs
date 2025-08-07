@@ -1,3 +1,63 @@
+//! Example test runner:
+//! ```
+//! const ERROR_DESCRIPTION_SIZE: usize = 32;
+//! #[derive(TestRunner)]
+//! struct Tests {
+//!     some_assertion_test: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
+//!     test_with_custom_error: fn(Assertion) -> Result<(), CustomError>,
+//!     test_z: fn(Assertion) -> Result<(), CustomError>,
+//! }
+//! impl Tests {
+//!     pub fn new() -> Self {
+//!         Tests {
+//!             some_assertion_test: test_a,
+//!             test_with_custom_error: test_b,
+//!             test_z: test_c,
+//!         }
+//!     }
+//! }
+//!
+//! // Custom Error that can be returned in test functions
+//! #[derive(Debug)]
+//! enum CustomError {
+//!     Error1,
+//!     SomeError2,
+//! }
+//! impl core::fmt::Display for CustomError {
+//!    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//!        match self {
+//!            CustomError::Error1 => write!(f, "FIRST_ERROR"),
+//!            CustomError::SomeError2 => write!(f, "SECOND_ERROR"),
+//!        }
+//!    }
+//! }
+//! impl core::error::Error for CustomError {}
+//!
+//! fn test_a(assertion: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
+//!     assertion.assert_eq(1, 1)?;
+//!     Ok(())
+//! }
+//! fn test_b(_assertion: Assertion) -> Result<(), CustomError> {
+//!     Ok(())
+//! }
+//! fn test_c(_assertion: Assertion) -> Result<(), CustomError> {
+//!     Err(CustomError::Error1)
+//! }
+//!
+//! fn main() {
+//!    for result in Tests::default().execute() {
+//!        match result {
+//!            Ok(assertion_success) => {
+//!                println!("SUCCESS: {}", assertion_success.test_name());
+//!            }
+//!            Err(e) => {
+//!                println!("FAILURE: {}", e);
+//!            }
+//!        }
+//!    }
+//! }
+//! ```
+
 extern crate proc_macro;
 use heck::ToUpperCamelCase;
 use proc_macro::TokenStream;
@@ -39,9 +99,10 @@ pub fn test_runner(input: TokenStream) -> TokenStream {
         Data::Union(_) => panic!("Expected a named struct, but found an union"),
     };
     let test_types_ident = Ident::new(&format!("{name}Error"), input.span());
+    let iter_ident = Ident::new(&format!("{name}Iter"), input.span());
     quote::quote! {
         #[derive(Debug)]
-        enum #test_types_ident {
+        pub enum #test_types_ident {
             #(#test_error_name(#test_error),)*
         }
         impl ::core::fmt::Display for #test_types_ident {
@@ -52,36 +113,37 @@ pub fn test_runner(input: TokenStream) -> TokenStream {
             }
         }
         impl ::core::error::Error for #test_types_ident {}
-        impl #impl_generics ::embedded_tester::TestRunner for #name #ty_generics #where_clause {
-            fn execute(self) -> impl ::core::iter::Iterator<Item = ::embedded_tester::TestResult<'static, impl ::core::error::Error>> {
-                struct InnerIter #impl_generics {
-                    index: usize,
-                    test_runner: #name #ty_generics,
-                }
-                impl #impl_generics ::core::iter::Iterator
-                    for InnerIter #ty_generics
-                {
-                    type Item = ::embedded_tester::TestResult<'static, #test_types_ident>;
-                    fn next(&mut self) -> ::core::option::Option<Self::Item> {
-                        let r = match self.index {
-                            #(#test_indexes => {
-                                let assertion = ::embedded_tester::assertion::Assertion::new(#test_names);
-                                let f = self.test_runner.#test_fields;
-                                let r = match ::embedded_tester::TestContext::new(assertion, f).run() {
-                                    Ok(s) => Ok(s),
-                                    Err(e) => Err(e.map_error(|e| {
-                                        #test_types_ident::#test_error_name(e)
-                                    })),
-                                };
-                                Some(r)
-                            })*
-                            _ => None,
-                        };
+        pub struct #iter_ident #impl_generics {
+            index: usize,
+            test_runner: #name #ty_generics,
+        }
+        impl #impl_generics ::core::iter::Iterator
+            for #iter_ident #ty_generics
+        {
+            type Item = ::embedded_tester::TestResult<'static, #test_types_ident>;
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
+                match self.index {
+                    #(#test_indexes => {
                         self.index += 1;
-                        r
-                    }
+                        let assertion = ::embedded_tester::assertion::Assertion::new(#test_names);
+                        let f = self.test_runner.#test_fields;
+                        let r = match ::embedded_tester::TestContext::new(assertion, f).run() {
+                            Ok(s) => Ok(s),
+                            Err(e) => Err(e.map_error(|e| {
+                                #test_types_ident::#test_error_name(e)
+                            })),
+                        };
+                        Some(r)
+                    })*
+                    _ => None,
                 }
-                InnerIter { index: 0, test_runner: self }.into_iter()
+            }
+        }
+        impl #impl_generics ::embedded_tester::TestRunner for #name #ty_generics #where_clause {
+            type Error = #test_types_ident;
+            type Iterator = #iter_ident;
+            fn execute(self) -> Self::Iterator {
+                Self::Iterator { index: 0, test_runner: self }
             }
         }
     }
@@ -102,4 +164,158 @@ fn extract_error_type(field: &Field) -> Option<&Type> {
     } else {
         None
     }
+}
+
+#[proc_macro_derive(TestScheduler)]
+pub fn test_scheduler(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (
+        test_names,
+        (
+            field_index,
+            (
+                fields,
+                (field_types, (generic_index, (generic_index_1, (generic_variant, error_names)))),
+            ),
+        ),
+    ): (
+        Vec<_>,
+        (
+            Vec<_>,
+            (Vec<_>, (Vec<_>, (Vec<_>, (Vec<_>, (Vec<_>, Vec<_>))))),
+        ),
+    ) = match &input.data {
+        Data::Struct(data) => data
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                if let Type::Path(ref path) = f.ty {
+                    let type_name = path.path.get_ident().expect("Expected name").to_string();
+                    let field_ident = f.ident.as_ref().expect("Expected named field").to_string();
+                    let generic_index = Ident::new(&format!("T{i}"), input.span());
+                    let generic_index_1 = Ident::new(&format!("K{i}"), input.span());
+                    let generic_name = Ident::new(&field_ident.to_upper_camel_case(), input.span());
+                    let error = Ident::new(&format!("{type_name}Error"), input.span());
+                    (
+                        LitStr::new(&format!("{field_ident}:"), input.span()),
+                        (
+                            LitInt::new(&i.to_string(), input.span()),
+                            (
+                                Ident::new(&field_ident, input.span()),
+                                (
+                                    &f.ty,
+                                    (generic_index, (generic_index_1, (generic_name, error))),
+                                ),
+                            ),
+                        ),
+                    )
+                } else {
+                    panic!("Expected type path")
+                }
+            })
+            .unzip(),
+        Data::Enum(_) => panic!("Test suite must be a struct, but found an enum"),
+        Data::Union(_) => panic!("Test suite must be a struct, but found an union"),
+    };
+    let test_types_ident = Ident::new(&format!("{name}Error"), input.span());
+    let iter_ident = Ident::new(&format!("{name}Iter"), input.span());
+    let iter_enum_ident = Ident::new(&format!("{name}IterType"), input.span());
+    quote::quote! {
+        #[derive(Debug)]
+        pub enum #test_types_ident {
+            #(#error_names(#error_names),)*
+        }
+        impl ::core::fmt::Display for #test_types_ident {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                match self {
+                    #(Self::#error_names(e) => e.fmt(f),)*
+                }
+            }
+        }
+        impl ::core::error::Error for #test_types_ident {}
+        #(
+            impl From<#error_names> for #test_types_ident {
+                fn from(e: #error_names) -> Self {
+                    Self::#error_names(e)
+                }
+            }
+        )*
+        impl #impl_generics ::core::default::Default for #name #ty_generics #where_clause {
+            fn default() -> Self {
+                Self {
+                    #(#fields: #field_types::default(),)*
+                }
+            }
+        }
+        impl #impl_generics ::embedded_tester::scheduler::TestScheduler for #name #ty_generics #where_clause {
+            fn execute(self, logger: impl ::embedded_tester::scheduler::TestLogger) {
+                #(
+                    logger.log(#test_names);
+                    for test_runner in ::embedded_tester::TestRunner::execute(self.#fields) {
+                        logger.log_test(test_runner);
+                    }
+                )*
+            }
+        }
+        pub struct #iter_ident {
+            index: usize,
+            iter_type: ::core::option::Option<#iter_enum_ident>,
+            test_runners: (#(::core::option::Option<#field_types>,)*),
+        }
+        impl ::core::iter::Iterator for #iter_ident {
+            type Item = ::embedded_tester::TestResult<'static, #test_types_ident>;
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
+                if let Some(ref mut iter) = self.iter_type && let Some(value) = iter.next() {
+                    Some(value)
+                } else {
+                    loop {
+                        let mut iter_type = match self.index {
+                            #(#field_index => {
+                                self.index += 1;
+                                #iter_enum_ident::#generic_variant(::embedded_tester::TestRunner::execute(self.test_runners.#field_index.take().unwrap()).into_iter().map(|test_result| {
+                                    test_result
+                                        .map_err(|e| e.map_error(#test_types_ident::#error_names))
+                                }))
+                            })*
+                            _ => { break None; }
+                        };
+                        if let Some(value) = iter_type.next() {
+                            self.iter_type = Some(iter_type);
+                            break Some(value);
+                        }
+                    }
+                }
+            }
+        }
+        pub enum #iter_enum_ident {
+            #(#generic_variant(::core::iter::Map<<#field_types as ::embedded_tester::TestRunner>::Iterator, fn(::embedded_tester::TestResult<'static, <#field_types as ::embedded_tester::TestRunner>::Error>) -> ::embedded_tester::TestResult<'static, #test_types_ident>>),)*
+        }
+        impl ::core::iter::Iterator for #iter_enum_ident {
+            type Item = ::embedded_tester::TestResult<'static, #test_types_ident>;
+            fn next(&mut self) -> Option<Self::Item> {
+                match self {
+                    #(Self::#generic_variant(iter) => if let Some(value) = iter.next() {
+                        Some(value.into())
+                    } else {
+                        None
+                    },)*
+                }
+            }
+        }
+        impl #impl_generics ::embedded_tester::TestRunner for #name #ty_generics #where_clause {
+            type Error = #test_types_ident;
+            type Iterator = #iter_ident;
+            fn execute(self) -> Self::Iterator {
+                Self::Iterator {
+                    index: 0,
+                    iter_type: None,
+                    test_runners: (#(Some(self.#fields),)*),
+                }
+            }
+        }
+    }
+    .into()
 }

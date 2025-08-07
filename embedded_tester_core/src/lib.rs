@@ -12,9 +12,12 @@ use crate::{
 
 pub mod assertion;
 pub mod error;
+pub mod scheduler;
 
 pub trait TestRunner {
-    fn execute(self) -> impl Iterator<Item = TestResult<'static, impl core::error::Error>>;
+    type Error: core::error::Error;
+    type Iterator: core::iter::Iterator<Item = TestResult<'static, Self::Error>>;
+    fn execute(self) -> Self::Iterator;
 }
 
 pub type TestResult<'a, E> = Result<AssertionSuccessful<'a>, TestError<'a, E>>;
