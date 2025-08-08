@@ -11,4 +11,5 @@ heapless = "0.8.0"
 panic-halt = "1.0.0"
 
 [features]
+default = ["scheduler"]
 scheduler = []

@@ -12,6 +12,7 @@ use crate::{
 
 pub mod assertion;
 pub mod error;
+#[cfg(feature = "scheduler")]
 pub mod scheduler;
 
 pub trait TestRunner {
