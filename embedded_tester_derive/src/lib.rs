@@ -1,63 +1,3 @@
-//! Example test runner:
-//! ```
-//! const ERROR_DESCRIPTION_SIZE: usize = 32;
-//! #[derive(TestRunner)]
-//! struct Tests {
-//!     some_assertion_test: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
-//!     test_with_custom_error: fn(Assertion) -> Result<(), CustomError>,
-//!     test_z: fn(Assertion) -> Result<(), CustomError>,
-//! }
-//! impl Tests {
-//!     pub fn new() -> Self {
-//!         Tests {
-//!             some_assertion_test: test_a,
-//!             test_with_custom_error: test_b,
-//!             test_z: test_c,
-//!         }
-//!     }
-//! }
-//!
-//! // Custom Error that can be returned in test functions
-//! #[derive(Debug)]
-//! enum CustomError {
-//!     Error1,
-//!     SomeError2,
-//! }
-//! impl core::fmt::Display for CustomError {
-//!    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//!        match self {
-//!            CustomError::Error1 => write!(f, "FIRST_ERROR"),
-//!            CustomError::SomeError2 => write!(f, "SECOND_ERROR"),
-//!        }
-//!    }
-//! }
-//! impl core::error::Error for CustomError {}
-//!
-//! fn test_a(assertion: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
-//!     assertion.assert_eq(1, 1)?;
-//!     Ok(())
-//! }
-//! fn test_b(_assertion: Assertion) -> Result<(), CustomError> {
-//!     Ok(())
-//! }
-//! fn test_c(_assertion: Assertion) -> Result<(), CustomError> {
-//!     Err(CustomError::Error1)
-//! }
-//!
-//! fn main() {
-//!    for result in Tests::default().execute() {
-//!        match result {
-//!            Ok(assertion_success) => {
-//!                println!("SUCCESS: {}", assertion_success.test_name());
-//!            }
-//!            Err(e) => {
-//!                println!("FAILURE: {}", e);
-//!            }
-//!        }
-//!    }
-//! }
-//! ```
-
 extern crate proc_macro;
 use heck::ToUpperCamelCase;
 use proc_macro::TokenStream;
@@ -166,26 +106,15 @@ fn extract_error_type(field: &Field) -> Option<&Type> {
     }
 }
 
+/// `TestScheduler` requires every inner `TestRunner` to implement the `Default` trait.
 #[proc_macro_derive(TestScheduler)]
 pub fn test_scheduler(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let (
-        test_names,
-        (
-            field_index,
-            (
-                fields,
-                (field_types, (generic_index, (generic_index_1, (generic_variant, error_names)))),
-            ),
-        ),
-    ): (
+    let (test_names, (field_index, (fields, (field_types, (generic_variant, error_names))))): (
         Vec<_>,
-        (
-            Vec<_>,
-            (Vec<_>, (Vec<_>, (Vec<_>, (Vec<_>, (Vec<_>, Vec<_>))))),
-        ),
+        (Vec<_>, (Vec<_>, (Vec<_>, (Vec<_>, Vec<_>)))),
     ) = match &input.data {
         Data::Struct(data) => data
             .fields
@@ -195,8 +124,6 @@ pub fn test_scheduler(input: TokenStream) -> TokenStream {
                 if let Type::Path(ref path) = f.ty {
                     let type_name = path.path.get_ident().expect("Expected name").to_string();
                     let field_ident = f.ident.as_ref().expect("Expected named field").to_string();
-                    let generic_index = Ident::new(&format!("T{i}"), input.span());
-                    let generic_index_1 = Ident::new(&format!("K{i}"), input.span());
                     let generic_name = Ident::new(&field_ident.to_upper_camel_case(), input.span());
                     let error = Ident::new(&format!("{type_name}Error"), input.span());
                     (
@@ -205,10 +132,7 @@ pub fn test_scheduler(input: TokenStream) -> TokenStream {
                             LitInt::new(&i.to_string(), input.span()),
                             (
                                 Ident::new(&field_ident, input.span()),
-                                (
-                                    &f.ty,
-                                    (generic_index, (generic_index_1, (generic_name, error))),
-                                ),
+                                (&f.ty, (generic_name, error)),
                             ),
                         ),
                     )
@@ -250,12 +174,12 @@ pub fn test_scheduler(input: TokenStream) -> TokenStream {
                 }
             }
         }
-        impl #impl_generics ::embedded_tester::scheduler::TestScheduler for #name #ty_generics #where_clause {
-            fn execute(self, logger: impl ::embedded_tester::scheduler::TestLogger) {
+        impl #impl_generics ::embedded_tester::TestScheduler for #name #ty_generics #where_clause {
+            fn execute_suites(self, logger: impl ::embedded_tester::TestLogger) {
                 #(
-                    logger.log(#test_names);
+                    logger.log_test_suite_name(#test_names);
                     for test_runner in ::embedded_tester::TestRunner::execute(self.#fields) {
-                        logger.log_test(test_runner);
+                        logger.log_test_result(test_runner);
                     }
                 )*
             }

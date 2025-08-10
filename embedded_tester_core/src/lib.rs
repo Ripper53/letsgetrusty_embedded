@@ -13,7 +13,9 @@ use crate::{
 pub mod assertion;
 pub mod error;
 #[cfg(feature = "scheduler")]
-pub mod scheduler;
+mod scheduler;
+#[cfg(feature = "scheduler")]
+pub use scheduler::*;
 
 pub trait TestRunner {
     type Error: core::error::Error;
@@ -38,11 +40,11 @@ impl<'a, T: Test> TestContext<'a, T> {
 
 pub trait Test {
     type Error: core::error::Error;
-    fn run(self, assertion: Assertion) -> TestResult<'_, Self::Error>;
+    fn run(self, assertion: Assertion<'_>) -> TestResult<'_, Self::Error>;
 }
 impl<E: core::error::Error> Test for for<'a> fn(Assertion<'a>) -> Result<(), E> {
     type Error = E;
-    fn run(self, assertion: Assertion) -> TestResult<'_, Self::Error> {
+    fn run(self, assertion: Assertion<'_>) -> TestResult<'_, Self::Error> {
         let test_name = assertion.test_name();
         if let Err(e) = self(assertion) {
             Err(TestError::new(test_name, e))

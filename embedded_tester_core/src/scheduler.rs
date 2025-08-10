@@ -1,10 +1,10 @@
 use crate::TestResult;
 
 pub trait TestScheduler {
-    fn execute(self, logger: impl TestLogger);
+    fn execute_suites(self, logger: impl TestLogger);
 }
 
 pub trait TestLogger {
-    fn log(&self, message: &str);
-    fn log_test<E: core::error::Error>(&self, test_result: TestResult<'_, E>);
+    fn log_test_suite_name(&self, message: &str);
+    fn log_test_result<E: core::error::Error>(&self, test_result: TestResult<'_, E>);
 }

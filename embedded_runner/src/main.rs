@@ -54,7 +54,7 @@ struct TestsB {
 
 #[derive(TestRunner)]
 struct TestsC {
-    a: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
+    c: fn(Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>>,
 }
 
 impl Default for TestsA {
@@ -75,11 +75,11 @@ impl Default for TestsB {
 
 impl Default for TestsC {
     fn default() -> Self {
-        TestsC { a: test_a }
+        TestsC { c: test_a }
     }
 }
 
-fn test_a(a: Assertion) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
+fn test_a(a: Assertion<'_>) -> Result<(), AssertionFailure<ERROR_DESCRIPTION_SIZE>> {
     a.assert_eq(1, 1)?;
     Ok(())
 }
@@ -96,6 +96,6 @@ impl core::fmt::Display for CustomError {
     }
 }
 impl core::error::Error for CustomError {}
-fn test_b(_a: Assertion) -> Result<(), CustomError> {
+fn test_b(_a: Assertion<'_>) -> Result<(), CustomError> {
     Err(CustomError::Error1)
 }
