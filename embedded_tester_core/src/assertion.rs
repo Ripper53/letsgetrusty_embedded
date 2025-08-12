@@ -74,6 +74,8 @@ impl<'a> AssertionSuccessful<'a> {
         self.test_name
     }
 }
+/// `ERROR_DESCRIPTION_LENGTH` is the max length of the failure description this can hold.
+/// Longer strings will be truncated.
 #[derive(Debug)]
 pub struct AssertionFailure<const ERROR_DESCRIPTION_LENGTH: usize> {
     description: String<ERROR_DESCRIPTION_LENGTH>,

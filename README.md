@@ -1,23 +1,34 @@
-# letsgetrusty_embedded
+# embedded_tester
 
 This follows [Let's Get Rusty's embedded test runner project](https://github.com/letsgetrusty/bootcamp/tree/master/4.%20Projects/4.Embedded/Problem).
 This project was created with the intent to learn about Rust's `no_std` and stack-based programming.
 
 ## About
-Stack-based `no_std` test runner.
+Stack-based `no_std` test runner. Does not allocate memory on the heap.
 
-## Examples
+## Example Project
+`embedded_runner` is an example project.
+Read its `README.md` [here](embedded_runner/README.md).
 
-A `TestRunner` holds function pointers of signature `fn(Assertion) -> Result<(), impl Error>,
+## How to Use
+A `TestRunner` holds function pointers of signature `fn(Assertion) -> Result<(), Error>` where `Error` is a type that implements `core::error::Error`.
+
+Example code:
 ```rust
 // The max length of the error message
-// relative to `AssertionFailure`
+// used by `AssertionFailure`.
+// This max length is required because
+// it will be allocated on the stack.
+// Strings longer than this will be truncated.
 const ERROR_SIZE: usize = 255;
 #[derive(TestRunner)]
 struct Tests {
-    // Explicit lifetime
+    // Explicit lifetime, and can only catch assertion failures.
     test_a: for<'a> fn(Assertion<'a>) -> Result<(), AssertionFailure<ERROR_SIZE>>,
-    // Custom error type
+    // Custom error type,
+    // if you wish to allow this test to also catch an `AssertionFailure`,
+    // make a new error that can be converted with the `From` trait
+    // to this error and `AssertionFailure`.
     test_b: fn(Assertion) -> Result<(), CustomError>,
 }
 
@@ -34,11 +45,14 @@ fn test_b(assertion: Assertion) -> Result<(), CustomError> {
 enum CustomError {
     // VARIANTS
 }
-
-impl Error for CustomError {
+impl Error for CustomError {}
+impl Display for CustomError {
     // IMPL
 }
 ```
-## Example Project
-`embedded_runner` is an example project.
-Read its `README.md` [here](embedded_runner/README.md).
+
+## Test Code
+We use Docker to build the `embedded_runner` project with different QEMU simulated devices.
+Run `docker-compose up` in the root of this repository. It will:
+1. Compile the project multiple times in release mode with different amounts of memory
+2. Run the tests found in the project with the specifications and once with CPU throttle
