@@ -12,6 +12,9 @@ Read its `README.md` [here](embedded_runner/README.md).
 
 ## How to Use
 A `TestRunner` holds function pointers of signature `fn(Assertion) -> Result<(), Error>` where `Error` is a type that implements `core::error::Error`.
+The main way to use this is with the `TestRunner` and `TestScheduler` derive macros.
+`TestRunner` is your main derive macro, which holds function pointers that act as tests.
+To create suites of tests, use `TestScheduler` which can hold other `TestScheduler`s and `TestRunner`s.
 
 Example code:
 ```rust
@@ -37,7 +40,7 @@ fn test_a(assertion: Assertion<'_>) -> Result<(), AssertionFailure<ERROR_SIZE>> 
     Ok(())
 }
 
-fn test_b(assertion: Assertion) -> Result<(), CustomError> {
+fn test_b(_assertion: Assertion) -> Result<(), CustomError> {
     Err(CustomError::ErrorA)
 }
 
@@ -50,6 +53,14 @@ impl Display for CustomError {
     // IMPL
 }
 ```
+
+This will implement the `TestRunner::execute` method that can be called on `Tests` like so:
+```rust
+for test_result in Tests::default().execute() {
+    // IMPL
+}
+```
+`TestScheduler` derive macro implements `TestScheduler::execute_suites` method and `TestRunner::execute`, and can only hold `TestRunner`s and other `TestScheduler`s.
 
 ## Test Code
 We use Docker to build the `embedded_runner` project with different QEMU simulated devices.
