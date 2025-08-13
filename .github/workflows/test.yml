@@ -1,0 +1,28 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  tests:
+    name: Test on Rust Stable
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Chckout repository
+        uses: actions/checkout@4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run Tests
+        run: cargo test
