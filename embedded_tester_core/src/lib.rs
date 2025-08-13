@@ -53,32 +53,3 @@ impl<E: core::error::Error> Test for for<'a> fn(Assertion<'a>) -> Result<(), E> 
         }
     }
 }
-
-/*#[derive(Debug)]
-pub struct TestResult<'a, const Count: usize> {
-    errors: [TestError<'a>; ErrorCount],
-}
-
-impl<'a, const ErrorCount: usize> core::fmt::Display for TestResult<'a, ErrorCount> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut error_message = String::<ErrorCount>::new();
-        for error in self.errors.iter() {
-            write!(
-                error_message,
-                "{}: {}\n",
-                error.test_name(),
-                error.description()
-            );
-        }
-        let error_count = self.errors.len();
-        write!(
-            error_message,
-            "❌ {}/{} tests succeeded, {error_count} failures!",
-            self.total_tests - error_count,
-            self.total_tests,
-        );
-        write!(f, "{}", error_message)
-    }
-}
-impl<'a, const ErrorCount: usize> core::error::Error for TestResult<'a, ErrorCount> {}
-*/
