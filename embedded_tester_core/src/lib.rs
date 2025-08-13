@@ -17,7 +17,7 @@ mod scheduler;
 #[cfg(feature = "scheduler")]
 pub use scheduler::*;
 
-pub trait TestRunner {
+pub trait TestRunner: Default {
     type Error: core::error::Error;
     type Iterator: core::iter::Iterator<Item = TestResult<'static, Self::Error>>;
     fn execute(self) -> Self::Iterator;
