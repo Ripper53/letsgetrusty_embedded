@@ -1,0 +1,13 @@
+[package]
+name = "embedded_tester_derive"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+embedded_tester_core = { path = "../embedded_tester_core" }
+heck = "0.5.0"
+quote = "1.0.40"
+syn = "2.0.104"

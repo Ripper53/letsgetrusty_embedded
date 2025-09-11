@@ -1,0 +1,13 @@
+[package]
+name = "embedded_tester"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embedded_tester_core = { path = "../embedded_tester_core" }
+embedded_tester_derive = { path = "../embedded_tester_derive" }
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.5"
+cortex-m-semihosting = "0.5.0"
+heapless = "0.8.0"
+panic-halt = "1.0.0"
